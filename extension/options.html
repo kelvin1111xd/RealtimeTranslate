@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Local AI Subtitles Options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Local AI Subtitles</h1>
+        <button id="save">Save</button>
+      </header>
+
+      <section>
+        <h2>General</h2>
+        <label>Local API <input id="apiBase" placeholder="http://127.0.0.1:8765" /></label>
+        <label>Default target language <select id="language"></select></label>
+        <label>Subtitle order
+          <select id="order">
+            <option value="translation-first">Translation above source</option>
+            <option value="source-first">Source above translation</option>
+          </select>
+        </label>
+        <label>Display mode
+          <select id="displayMode">
+            <option value="normal">Normal single subtitle</option>
+            <option value="stack">Stacked rolling subtitles</option>
+          </select>
+        </label>
+        <label>Horizontal position
+          <select id="horizontalPosition">
+            <option value="left">Left</option>
+            <option value="center">Center</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        <div class="check-grid">
+          <label class="check"><input id="enabled" type="checkbox" /> Enable subtitles by default</label>
+          <label class="check"><input id="showSource" type="checkbox" /> Show source subtitles</label>
+          <label class="check"><input id="bilingual" type="checkbox" /> Bilingual display</label>
+          <label class="check"><input id="toolbar" type="checkbox" /> Overlay toolbar</label>
+          <label class="check"><input id="autoLoad" type="checkbox" /> Auto-load subtitles</label>
+          <label class="check"><input id="autoCreateJob" type="checkbox" /> Auto-create translation job</label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Style</h2>
+        <label>Font size <input id="fontSize" type="number" min="16" max="72" /></label>
+        <label>Position <input id="verticalPosition" type="range" min="4" max="40" /></label>
+        <label>Background opacity <input id="backgroundOpacity" type="range" min="0" max="1" step="0.05" /></label>
+        <div class="check-grid">
+          <label class="check"><input id="background" type="checkbox" /> Text background</label>
+          <label class="check"><input id="shadow" type="checkbox" /> Text shadow</label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Stacked Mode</h2>
+        <label>Maximum visible subtitles <input id="stackMaxItems" type="number" min="1" max="8" /></label>
+        <label>Push direction
+          <select id="stackDirection">
+            <option value="up">Push older subtitles upward</option>
+            <option value="down">Push older subtitles downward</option>
+          </select>
+        </label>
+        <label>Past subtitle opacity <input id="stackPastOpacity" type="range" min="0.1" max="1" step="0.05" /></label>
+        <label>Past subtitle scale <input id="stackPastScale" type="range" min="0.55" max="1" step="0.05" /></label>
+      </section>
+
+      <section>
+        <h2>Shortcuts</h2>
+        <div class="shortcut-grid">
+          <label>Toggle subtitles <input id="shortcutToggle" /></label>
+          <label>Toggle bilingual <input id="shortcutMode" /></label>
+          <label>Font larger <input id="shortcutFontUp" /></label>
+          <label>Font smaller <input id="shortcutFontDown" /></label>
+          <label>Move up <input id="shortcutUp" /></label>
+          <label>Move down <input id="shortcutDown" /></label>
+        </div>
+      </section>
+
+      <p id="status"></p>
+    </main>
+    <script src="settings.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

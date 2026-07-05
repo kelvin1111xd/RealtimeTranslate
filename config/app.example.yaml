@@ -1,0 +1,49 @@
+asr:
+  engine: faster-whisper
+  model: large-v3
+  fallback_model: medium
+  device: cuda
+  compute_type: float16
+  fallback_compute_type: int8_float16
+  vad_filter: true
+  beam_size: 5
+  best_of: 5
+  word_timestamps: true
+  condition_on_previous_text: true
+
+youtube:
+  # Optional. Use only for videos you are allowed to access.
+  # Keep real cookie files under config/secrets/ and do not commit them.
+  cookies_file:
+  cookies_from_browser:
+  browser_profile:
+  js_runtimes: []
+
+translation:
+  primary_provider: ollama
+  ollama_base_url: http://127.0.0.1:11434
+  openai_compatible_base_url: http://127.0.0.1:8080/v1
+  openai_compatible_api_key: local
+  model: qwen3:8b
+  context_previous_segments: 3
+  context_next_segments: 1
+  glossary_enabled: true
+  subtitle_style: concise
+  request_timeout_seconds: 180
+
+subtitle:
+  formats: ["srt", "vtt", "ass"]
+  max_lines: 2
+  zh_tw_chars_per_line: 18
+  en_chars_per_line: 42
+  ja_chars_per_line: 18
+  min_cue_ms: 1200
+  max_cue_ms: 6000
+
+server:
+  host: 127.0.0.1
+  port: 8765
+
+storage:
+  data_dir: data
+  work_dir: work

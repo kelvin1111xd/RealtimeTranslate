@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Realtime Translate</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <h1>Realtime Translate</h1>
+            <p>Local YouTube subtitle transcription, translation, and overlay preview.</p>
+          </div>
+          <div class="status-pill" id="serverStatus">Checking</div>
+        </header>
+
+        <form id="jobForm" class="control-panel">
+          <label>
+            YouTube URL
+            <input id="youtubeUrl" type="url" required placeholder="https://www.youtube.com/watch?v=..." />
+          </label>
+          <label>
+            Source
+            <select id="sourceLanguage">
+              <option value="auto">Auto</option>
+              <option value="ja">Japanese</option>
+              <option value="en">English</option>
+              <option value="zh">Chinese</option>
+            </select>
+          </label>
+          <label>
+            Targets
+            <input id="targetLanguages" value="zh-TW" />
+          </label>
+          <button type="submit">Create Job</button>
+        </form>
+
+        <section class="job-layout">
+          <div class="panel">
+            <div class="panel-title">
+              <h2>Job</h2>
+              <button id="refreshJob" type="button">Refresh</button>
+            </div>
+            <div class="progress-panel">
+              <div class="progress-head">
+                <div>
+                  <div class="progress-status" id="progressStatus">No job</div>
+                  <div class="progress-message" id="progressMessage">Create a job to start.</div>
+                </div>
+                <div class="progress-percent" id="progressPercent">0%</div>
+              </div>
+              <div class="progress-track"><div id="progressBar"></div></div>
+              <div class="stage-grid" id="stageGrid"></div>
+              <div class="progress-detail" id="progressDetail"></div>
+              <div id="segmentProgress" class="segment-progress" hidden>
+                <div class="segment-progress-head">
+                  <span>Segment translation</span>
+                  <span id="segmentProgressCount">0 / 0</span>
+                </div>
+                <div class="progress-track segment-track">
+                  <div id="segmentProgressBar"></div>
+                </div>
+              </div>
+            </div>
+            <pre id="jobOutput">{}</pre>
+          </div>
+
+          <div class="panel">
+            <div class="panel-title">
+              <h2>Subtitles</h2>
+              <div class="inline-controls">
+                <input id="videoId" placeholder="video id" />
+                <input id="subtitleLang" value="zh-TW" />
+                <button id="loadSubtitles" type="button">Load</button>
+              </div>
+            </div>
+            <div id="subtitleList" class="subtitle-list">
+              <div class="empty-state">Translation segments will appear here.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel glossary-panel">
+          <div class="panel-title">
+            <h2>Glossary</h2>
+            <button id="saveGlossary" type="button">Save Glossary</button>
+          </div>
+          <div class="glossary-editor">
+            <p>One entry per line: source =&gt; target | zh-TW,ja,en</p>
+            <textarea id="glossaryText" placeholder="OpenAI => OpenAI | zh-TW,ja,en"></textarea>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

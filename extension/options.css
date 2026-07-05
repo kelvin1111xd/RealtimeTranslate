@@ -1,0 +1,103 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #f6f7f9;
+  color: #17202a;
+}
+
+main {
+  width: min(920px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 24px 0;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+}
+
+h2 {
+  font-size: 16px;
+}
+
+section {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #d7dde6;
+  border-radius: 8px;
+  background: white;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #687385;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #17202a;
+}
+
+.check-grid,
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+input,
+select,
+button {
+  min-height: 36px;
+  border: 1px solid #d7dde6;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+}
+
+input[type="range"] {
+  padding: 0;
+}
+
+button {
+  min-width: 96px;
+  cursor: pointer;
+  background: #0f766e;
+  color: white;
+  border-color: #0f766e;
+  font-weight: 600;
+}
+
+#status {
+  min-height: 20px;
+  color: #0f766e;
+}
+
+@media (max-width: 720px) {
+  .check-grid,
+  .shortcut-grid {
+    grid-template-columns: 1fr;
+  }
+}

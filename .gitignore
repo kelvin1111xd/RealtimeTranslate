@@ -1,0 +1,13 @@
+data/
+work/
+models/
+config/app.yaml
+config/secrets/
+.venv/
+*.pyc
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.env
+.env.*

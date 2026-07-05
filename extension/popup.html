@@ -1,0 +1,72 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Local AI Subtitles</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>AI Subtitles</h1>
+        <span id="videoState">Checking</span>
+      </header>
+
+      <label class="switch-row">
+        <span>啟用字幕</span>
+        <input id="enabled" type="checkbox" />
+      </label>
+
+      <label>
+        目標語言
+        <select id="language"></select>
+      </label>
+
+      <label>
+        顯示模式
+        <select id="displayMode">
+          <option value="normal">一般字幕</option>
+          <option value="stack">堆疊字幕</option>
+        </select>
+      </label>
+
+      <label>
+        水平位置
+        <select id="horizontalPosition">
+          <option value="left">左</option>
+          <option value="center">中</option>
+          <option value="right">右</option>
+        </select>
+      </label>
+
+      <div class="toggle-grid">
+        <label class="check"><input id="showSource" type="checkbox" /> 原文</label>
+        <label class="check"><input id="bilingual" type="checkbox" /> 雙語</label>
+      </div>
+
+      <label>
+        字幕位置
+        <input id="verticalPosition" type="range" min="4" max="40" />
+      </label>
+
+      <label>
+        字體大小
+        <input id="fontSize" type="range" min="16" max="72" />
+      </label>
+
+      <label>
+        最多字幕數
+        <input id="stackMaxItems" type="range" min="1" max="8" />
+      </label>
+
+      <div class="actions">
+        <button id="reload">重新載入</button>
+        <button id="createJob">建立任務</button>
+      </div>
+
+      <a id="openOptions" href="options.html" target="_blank">完整設定</a>
+    </main>
+    <script src="settings.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

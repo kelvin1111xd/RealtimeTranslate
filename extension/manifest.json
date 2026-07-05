@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Local AI YouTube Subtitles",
+  "version": "0.1.0",
+  "description": "Display locally generated AI subtitles on YouTube.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://www.youtube.com/*", "http://localhost:8765/*", "http://127.0.0.1:8765/*"],
+  "action": {
+    "default_title": "Local AI Subtitles",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/watch*", "https://www.youtube.com/live/*"],
+      "js": ["content.js"],
+      "css": ["subtitle.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "options.html"
+}
