@@ -38,11 +38,27 @@ class TranslationConfig(BaseModel):
     openai_compatible_base_url: str = "http://127.0.0.1:8080/v1"
     openai_compatible_api_key: str = "local"
     model: str = "qwen3:8b"
+    batch_enabled: bool = True
+    batch_size: int = 12
+    batch_token_limit: int = 5000
+    semantic_context_enabled: bool = True
+    semantic_context_max_chars: int = 1200
     context_previous_segments: int = 3
     context_next_segments: int = 1
     glossary_enabled: bool = True
     subtitle_style: str = "concise"
     request_timeout_seconds: float = 180
+    memory_enabled: bool = True
+    memory_max_items: int = 8
+    name_memory_max_items: int = 30
+    proofread_enabled: bool = True
+    batch_proofread_enabled: bool = True
+    proofread_only_low_confidence: bool = True
+    topic_summary_enabled: bool = True
+    topic_summary_interval_batches: int = 8
+    topic_summary_max_chars: int = 500
+    cache_enabled: bool = True
+    cache_path: Path = Path("data/translation_cache.sqlite3")
 
 
 class SubtitleConfig(BaseModel):
@@ -96,4 +112,7 @@ def resolve_config_paths(config: AppConfig) -> AppConfig:
         config.storage.work_dir = PROJECT_ROOT / config.storage.work_dir
     if config.youtube.cookies_file and not config.youtube.cookies_file.is_absolute():
         config.youtube.cookies_file = PROJECT_ROOT / config.youtube.cookies_file
+    if not config.translation.cache_path.is_absolute():
+        config.translation.cache_path = PROJECT_ROOT / config.translation.cache_path
+    config.translation.cache_path.parent.mkdir(parents=True, exist_ok=True)
     return config

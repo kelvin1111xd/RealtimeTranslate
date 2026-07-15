@@ -25,11 +25,27 @@ translation:
   openai_compatible_base_url: http://127.0.0.1:8080/v1
   openai_compatible_api_key: local
   model: qwen3:8b
+  batch_enabled: true
+  batch_size: 12
+  batch_token_limit: 5000
+  semantic_context_enabled: true
+  semantic_context_max_chars: 1200
   context_previous_segments: 3
   context_next_segments: 1
   glossary_enabled: true
   subtitle_style: concise
   request_timeout_seconds: 180
+  memory_enabled: true
+  memory_max_items: 8
+  name_memory_max_items: 30
+  proofread_enabled: true
+  batch_proofread_enabled: true
+  proofread_only_low_confidence: true
+  topic_summary_enabled: true
+  topic_summary_interval_batches: 8
+  topic_summary_max_chars: 500
+  cache_enabled: true
+  cache_path: data/translation_cache.sqlite3
 
 subtitle:
   formats: ["srt", "vtt", "ass"]
