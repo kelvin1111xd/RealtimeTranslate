@@ -19,6 +19,7 @@ from realtime_translate.translation import (
     parse_batch_translation_output,
     update_translation_memory,
 )
+from realtime_translate.youtube import extract_video_id
 
 
 def make_segment(segment_id: str, index: int) -> TranscriptSegment:
@@ -201,3 +202,13 @@ def test_translation_memory_keeps_recent_limited_context():
     assert len(memory.notes) == 2
     assert memory.notes[-1] == "Alice topic 2 => Alice 話題 2"
     assert memory.names == ["Alice"]
+
+
+def test_youtube_host_validation_rejects_lookalikes():
+    assert extract_video_id("https://www.youtube.com/watch?v=abc") == "abc"
+    try:
+        extract_video_id("https://youtube.com.evil.example/watch?v=abc")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("lookalike YouTube host was accepted")

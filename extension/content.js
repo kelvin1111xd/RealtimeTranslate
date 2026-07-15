@@ -1,6 +1,7 @@
 const DEFAULTS = {
   enabled: true,
   apiBase: "http://127.0.0.1:8765",
+  apiToken: "",
   language: "zh-TW",
   showSource: false,
   bilingual: false,
@@ -34,6 +35,9 @@ let activeVideoId = null;
 let lastCueText = "";
 let stackItems = [];
 let loadInFlight = null;
+let translationSocket = null;
+let translationSocketRetry = null;
+let apiStatus = "unknown";
 
 function getVideoId() {
   const url = new URL(location.href);
@@ -84,7 +88,15 @@ function ensureOverlay() {
   overlay.appendChild(toolbar);
   overlay.appendChild(lines);
   overlay.appendChild(stack);
-  document.body.appendChild(overlay);
+  const player = document.querySelector("#movie_player, .html5-video-player");
+  if (player) {
+    if (getComputedStyle(player).position === "static") player.style.position = "relative";
+    player.appendChild(overlay);
+    overlay.classList.remove("viewport-overlay");
+  } else {
+    document.body.appendChild(overlay);
+    overlay.classList.add("viewport-overlay");
+  }
   toolbar.addEventListener("click", handleToolbarClick);
   toolbar.addEventListener("change", handleToolbarChange);
   return overlay;
@@ -97,7 +109,7 @@ function applySettings() {
   overlay.style.setProperty("--subtitle-bg-opacity", String(settings.backgroundOpacity));
   overlay.style.setProperty("--stack-past-opacity", String(settings.stackPastOpacity));
   overlay.style.setProperty("--stack-past-scale", String(settings.stackPastScale));
-  overlay.classList.add("with-bg");
+  overlay.classList.toggle("with-bg", Boolean(settings.background));
   overlay.classList.toggle("with-shadow", Boolean(settings.shadow));
   overlay.classList.toggle("disabled", !settings.enabled);
   overlay.classList.toggle("toolbar-hidden", !settings.toolbar);
@@ -136,9 +148,20 @@ async function saveSettings(patch) {
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url);
+  let response;
+  try {
+    response = await fetch(url, { headers: apiHeaders() });
+  } catch {
+    apiStatus = "offline";
+    return null;
+  }
+  apiStatus = response.ok ? "online" : response.status === 401 ? "unauthorized" : "error";
   if (!response.ok) return null;
   return response.json();
+}
+
+function apiHeaders() {
+  return settings.apiToken ? { Authorization: `Bearer ${settings.apiToken}` } : {};
 }
 
 async function loadCues() {
@@ -156,6 +179,7 @@ async function loadCues() {
 
     translatedCues = translatedPayload?.cues || [];
     sourceCues = sourcePayload?.cues || [];
+    connectSubtitleSocket();
 
     if (!translatedCues.length && settings.autoCreateJob) {
       await createTranslationJob();
@@ -167,16 +191,43 @@ async function loadCues() {
 }
 
 async function createTranslationJob() {
-  await fetch(`${settings.apiBase}/api/jobs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      youtubeUrl: youtubeUrl(),
-      sourceLanguage: "auto",
-      targetLanguages: [settings.language],
-      qualityMode: "quality",
-    }),
+  try {
+    const response = await fetch(`${settings.apiBase}/api/jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...apiHeaders() },
+      body: JSON.stringify({
+        youtubeUrl: youtubeUrl(),
+        sourceLanguage: "auto",
+        targetLanguages: [settings.language],
+        qualityMode: "quality",
+      }),
+    });
+    apiStatus = response.ok ? "online" : response.status === 401 ? "unauthorized" : "error";
+  } catch {
+    apiStatus = "offline";
+  }
+}
+
+function connectSubtitleSocket() {
+  if (!activeVideoId || !settings.autoLoad) return;
+  if (translationSocket) translationSocket.close();
+  const protocol = settings.apiBase.startsWith("https:") ? "wss:" : "ws:";
+  const base = settings.apiBase.replace(/^https?:/, "").replace(/\/$/, "");
+  const query = new URLSearchParams({ lang: settings.language });
+  if (settings.apiToken) query.set("token", settings.apiToken);
+  const socket = new WebSocket(`${protocol}${base}/ws/subtitles/${activeVideoId}?${query}`);
+  translationSocket = socket;
+  socket.addEventListener("message", (event) => {
+    const payload = JSON.parse(event.data);
+    if (payload.cues) translatedCues = payload.cues;
   });
+  socket.addEventListener("close", () => {
+    if (translationSocket !== socket || !activeVideoId) return;
+    translationSocket = null;
+    clearTimeout(translationSocketRetry);
+    translationSocketRetry = setTimeout(connectSubtitleSocket, 3000);
+  });
+  socket.addEventListener("error", () => socket.close());
 }
 
 function currentCue(cues, timeMs) {
@@ -285,6 +336,7 @@ function tick() {
 async function maybeReloadForNavigation() {
   const nextVideoId = getVideoId();
   if (nextVideoId && nextVideoId !== activeVideoId) {
+    if (translationSocket) translationSocket.close();
     translatedCues = [];
     sourceCues = [];
     lastCueText = "";
@@ -370,6 +422,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         videoId: getVideoId(),
         translatedCount: translatedCues.length,
         sourceCount: sourceCues.length,
+        apiStatus,
       });
     }
     if (message.type === "set-settings") {
@@ -394,10 +447,17 @@ setInterval(maybeReloadForNavigation, 1000);
 document.addEventListener("keydown", handleShortcut);
 chrome.storage.onChanged.addListener(async () => {
   const previousLanguage = settings.language;
+  const previousApiBase = settings.apiBase;
+  const previousApiToken = settings.apiToken;
   const previousSourceMode = settings.showSource || settings.bilingual;
   await loadSettings();
   const nextSourceMode = settings.showSource || settings.bilingual;
-  if (settings.language !== previousLanguage || nextSourceMode !== previousSourceMode) {
+  if (
+    settings.language !== previousLanguage ||
+    nextSourceMode !== previousSourceMode ||
+    settings.apiBase !== previousApiBase ||
+    settings.apiToken !== previousApiToken
+  ) {
     await loadCues();
   }
 });

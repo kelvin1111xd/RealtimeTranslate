@@ -48,6 +48,7 @@ class VideoJob(BaseModel):
     error: str | None = None
     createdAt: str = Field(default_factory=utc_now_iso)
     updatedAt: str = Field(default_factory=utc_now_iso)
+    pipelineFingerprint: str | None = None
 
 
 class TranscriptSegment(BaseModel):

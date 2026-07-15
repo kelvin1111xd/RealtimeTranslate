@@ -4,7 +4,7 @@
   --subtitle-bg-opacity: 0.62;
   --stack-past-opacity: 0.55;
   --stack-past-scale: 0.82;
-  position: fixed;
+  position: absolute;
   left: 50%;
   bottom: var(--subtitle-bottom);
   z-index: 2147483647;
@@ -17,6 +17,10 @@
   font-weight: 700;
   line-height: 1.35;
   color: #fff;
+}
+
+#local-ai-subtitle-overlay.viewport-overlay {
+  position: fixed;
 }
 
 #local-ai-subtitle-overlay[data-horizontal="left"] {

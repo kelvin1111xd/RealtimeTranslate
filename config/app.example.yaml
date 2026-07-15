@@ -59,6 +59,8 @@ subtitle:
 server:
   host: 127.0.0.1
   port: 8765
+  # Set a non-empty token before exposing the API beyond localhost.
+  api_token: ""
 
 storage:
   data_dir: data

@@ -12,9 +12,10 @@ from .config import YouTubeConfig
 
 def extract_video_id(url: str) -> str:
     parsed = urlparse(url)
-    if parsed.hostname in {"youtu.be", "www.youtu.be"}:
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    if hostname in {"youtu.be", "www.youtu.be"}:
         return parsed.path.strip("/")
-    if parsed.hostname and "youtube.com" in parsed.hostname:
+    if hostname in {"youtube.com", "www.youtube.com", "m.youtube.com"}:
         query_id = parse_qs(parsed.query).get("v")
         if query_id:
             return query_id[0]

@@ -32,6 +32,9 @@ async function load() {
     : tab?.url?.includes("youtube.com")
       ? "No video"
       : "Not YouTube";
+  if (state?.apiStatus && state.apiStatus !== "online") {
+    $("videoState").textContent += ` · API ${state.apiStatus}`;
+  }
   render();
 }
 

@@ -1,6 +1,7 @@
 const DEFAULTS = {
   enabled: true,
   apiBase: "http://127.0.0.1:8765",
+  apiToken: "",
   language: "zh-TW",
   showSource: false,
   bilingual: false,

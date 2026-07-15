@@ -88,6 +88,8 @@ Open the preview UI:
 http://127.0.0.1:8765
 ```
 
+For local API protection, set `server.api_token` in `config/app.yaml`. The same value can be entered as `API token` in the extension options page. Leave it empty only when the server is strictly private and bound to localhost.
+
 Create a job:
 
 ```powershell
@@ -131,6 +133,16 @@ python -m realtime_translate.cli formats "https://www.youtube.com/watch?v=VIDEO_
 5. Open a YouTube video that already has generated local subtitles.
 
 The extension adds a local subtitle overlay and reads the YouTube `<video>` element time. It supports subtitle toggling, language selection, bilingual mode, stacked subtitle display, font size, position, and reload controls.
+
+The overlay also listens to the local subtitle WebSocket while a job is running. If the socket is unavailable it keeps the last loaded subtitles and can be reloaded manually. The extension options page controls the API URL, token, source visibility, background, player position, stacked mode, and keyboard shortcuts.
+
+Delete a completed job and optionally its generated files with:
+
+```powershell
+Invoke-RestMethod -Method Delete "http://127.0.0.1:8765/api/jobs/JOB_ID?purge_files=true"
+```
+
+The health endpoint reports database, Ollama, FFmpeg, yt-dlp, and free disk status.
 
 ## Tests
 

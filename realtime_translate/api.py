@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
+import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
@@ -10,6 +12,7 @@ from fastapi import (
     FastAPI,
     HTTPException,
     Query,
+    Request,
     Response,
     WebSocket,
     WebSocketDisconnect,
@@ -17,8 +20,9 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 
-from .config import load_config
+from .config import load_config, pipeline_fingerprint
 from .db import Database
 from .pipeline import Pipeline
 from .schemas import (
@@ -36,6 +40,7 @@ from .youtube import extract_video_id
 
 
 config = load_config()
+CURRENT_FINGERPRINT = pipeline_fingerprint(config)
 db = Database(config.storage.data_dir / "db.sqlite")
 pipeline = Pipeline(config, db)
 executor = ThreadPoolExecutor(max_workers=1)
@@ -49,6 +54,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def protect_local_api(request: Request, call_next):
+    token = config.server.api_token
+    if token and request.url.path.startswith("/api/"):
+        supplied = request.headers.get("authorization", "")
+        if not secrets.compare_digest(supplied, f"Bearer {token}"):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 static_dir = Path(__file__).resolve().parent.parent / "web"
 if static_dir.exists():
@@ -92,7 +107,30 @@ def index() -> FileResponse:
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "version": "0.1.0"}
+    database_ok = True
+    try:
+        with db.connect() as conn:
+            conn.execute("SELECT 1").fetchone()
+    except Exception:
+        database_ok = False
+    ollama_ok = None
+    if config.translation.primary_provider == "ollama":
+        try:
+            response = httpx.get(
+                f"{config.translation.ollama_base_url.rstrip('/')}/api/tags", timeout=1.5
+            )
+            ollama_ok = response.is_success
+        except Exception:
+            ollama_ok = False
+    return {
+        "ok": database_ok and (ollama_ok is not False),
+        "version": "0.1.0",
+        "database": database_ok,
+        "ollama": ollama_ok,
+        "ffmpeg": shutil.which("ffmpeg") is not None,
+        "ytDlp": shutil.which("yt-dlp") is not None,
+        "diskFreeBytes": shutil.disk_usage(config.storage.work_dir).free,
+    }
 
 
 @app.get("/api/diagnostics/youtube-formats")
@@ -118,7 +156,20 @@ def create_job(request: CreateJobRequest, background: BackgroundTasks) -> JobRes
     video_id = extract_video_id(str(request.youtubeUrl))
     target_languages = dedupe_languages(request.targetLanguages)
 
-    cached_job = db.get_latest_completed_job_for_languages(video_id, target_languages)
+    active_job = db.get_active_job_by_video(video_id)
+    if active_job:
+        return JobResponse(
+            job=active_job,
+            links={
+                **job_links(active_job),
+                "cache": "active",
+                "message": "An active job already exists for this video.",
+            },
+        )
+
+    cached_job = db.get_latest_completed_job_for_languages(
+        video_id, target_languages, CURRENT_FINGERPRINT
+    )
     if cached_job:
         missing_translation_files = pipeline.languages_missing_translation_files(cached_job, target_languages)
         if missing_translation_files:
@@ -251,6 +302,7 @@ def create_job(request: CreateJobRequest, background: BackgroundTasks) -> JobRes
         videoId=video_id,
         sourceLanguage=request.sourceLanguage,
         targetLanguages=target_languages,
+        pipelineFingerprint=CURRENT_FINGERPRINT,
         status=JobStatus.queued,
         createdAt=now,
         updatedAt=now,
@@ -269,6 +321,25 @@ def get_job(job_id: str) -> JobResponse:
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     return JobResponse(job=job, links=job_links(job))
+
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: str, purge_files: bool = Query(False)) -> dict:
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status in {
+        JobStatus.queued,
+        JobStatus.downloading,
+        JobStatus.transcribing,
+        JobStatus.translating,
+        JobStatus.exporting,
+    }:
+        raise HTTPException(status_code=409, detail="Cannot delete an active job")
+    if purge_files:
+        safe_delete_job_files(job)
+    db.delete_job(job_id)
+    return {"deleted": True, "jobId": job_id, "purgedFiles": purge_files}
 
 
 @app.post("/api/jobs/{job_id}/retranslate", response_model=JobResponse)
@@ -361,6 +432,9 @@ def get_glossary(video_id: str) -> dict:
 
 @app.websocket("/ws/subtitles/{video_id}")
 async def websocket_subtitles(websocket: WebSocket, video_id: str, lang: str = "zh-TW") -> None:
+    if not websocket_authorized(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     last_payload = None
     try:
@@ -377,6 +451,9 @@ async def websocket_subtitles(websocket: WebSocket, video_id: str, lang: str = "
 
 @app.websocket("/ws/jobs/{job_id}/translations/{lang}")
 async def websocket_job_translations(websocket: WebSocket, job_id: str, lang: str) -> None:
+    if not websocket_authorized(websocket):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     last_payload = None
     try:
@@ -430,6 +507,41 @@ def translation_stream_payload(job: VideoJob, language: str) -> dict:
         "percent": round(100 * completed / max(1, total)),
         "segments": segments,
     }
+
+
+def websocket_authorized(websocket: WebSocket) -> bool:
+    token = config.server.api_token
+    if not token:
+        return True
+    supplied = websocket.headers.get("authorization", "")
+    query_token = websocket.query_params.get("token", "")
+    return secrets.compare_digest(supplied, f"Bearer {token}") or secrets.compare_digest(
+        query_token, token
+    )
+
+
+def safe_delete_job_files(job: VideoJob) -> None:
+    root = config.storage.work_dir.resolve()
+    candidates = [
+        Path(job.audioPath) if job.audioPath else None,
+        root / "transcripts" / f"{job.videoId}.source.json",
+    ]
+    for language in job.targetLanguages:
+        candidates.extend(
+            [
+                root / "translations" / f"{job.videoId}.{language}.json",
+                *[root / "subtitles" / f"{job.videoId}.{language}.{fmt}" for fmt in config.subtitle.formats],
+            ]
+        )
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            resolved = candidate.resolve()
+            if root == resolved or root in resolved.parents:
+                resolved.unlink(missing_ok=True)
+        except OSError:
+            continue
 
 
 def job_links(job: VideoJob) -> dict[str, str]:

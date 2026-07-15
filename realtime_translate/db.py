@@ -49,6 +49,7 @@ class Database:
                   source_language TEXT NOT NULL,
                   detected_language TEXT,
                   target_languages TEXT NOT NULL,
+                  pipeline_fingerprint TEXT,
                   error TEXT,
                   created_at TEXT NOT NULL,
                   updated_at TEXT NOT NULL
@@ -127,6 +128,7 @@ class Database:
             "progress_stage": "ALTER TABLE jobs ADD COLUMN progress_stage TEXT NOT NULL DEFAULT 'queued'",
             "progress_message": "ALTER TABLE jobs ADD COLUMN progress_message TEXT NOT NULL DEFAULT 'Queued'",
             "progress_detail": "ALTER TABLE jobs ADD COLUMN progress_detail TEXT NOT NULL DEFAULT '{}'",
+            "pipeline_fingerprint": "ALTER TABLE jobs ADD COLUMN pipeline_fingerprint TEXT",
         }
         for column, statement in migrations.items():
             if column not in columns:
@@ -183,9 +185,9 @@ class Database:
                 INSERT OR REPLACE INTO jobs (
                   id, youtube_url, video_id, title, duration, channel, thumbnail, audio_path,
                   status, progress_percent, progress_stage, progress_message, progress_detail,
-                  source_language, detected_language, target_languages, error,
+                  source_language, detected_language, target_languages, pipeline_fingerprint, error,
                   created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     job.id,
@@ -204,6 +206,7 @@ class Database:
                     job.sourceLanguage,
                     job.detectedLanguage,
                     json.dumps(job.targetLanguages),
+                    job.pipelineFingerprint,
                     job.error,
                     job.createdAt,
                     utc_now_iso(),
@@ -215,10 +218,37 @@ class Database:
             row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
         return self._row_to_job(row) if row else None
 
+    def delete_job(self, job_id: str) -> bool:
+        with self.connect() as conn:
+            exists = conn.execute("SELECT 1 FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if not exists:
+                return False
+            for table in ("subtitle_cues", "translation_segments", "transcript_segments"):
+                conn.execute(f"DELETE FROM {table} WHERE job_id = ?", (job_id,))
+            conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        return True
+
     def get_latest_job_by_video(self, video_id: str) -> VideoJob | None:
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT * FROM jobs WHERE video_id = ? ORDER BY created_at DESC LIMIT 1", (video_id,)
+            ).fetchone()
+        return self._row_to_job(row) if row else None
+
+    def get_active_job_by_video(self, video_id: str) -> VideoJob | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """SELECT * FROM jobs
+                   WHERE video_id = ? AND status IN (?, ?, ?, ?, ?)
+                   ORDER BY created_at DESC LIMIT 1""",
+                (
+                    video_id,
+                    JobStatus.queued.value,
+                    JobStatus.downloading.value,
+                    JobStatus.transcribing.value,
+                    JobStatus.translating.value,
+                    JobStatus.exporting.value,
+                ),
             ).fetchone()
         return self._row_to_job(row) if row else None
 
@@ -254,7 +284,7 @@ class Database:
         return self._row_to_job(row) if row else None
 
     def get_latest_completed_job_for_languages(
-        self, video_id: str, languages: list[str]
+        self, video_id: str, languages: list[str], fingerprint: str | None = None
     ) -> VideoJob | None:
         if not languages:
             return None
@@ -265,6 +295,7 @@ class Database:
                 SELECT j.* FROM jobs j
                 WHERE j.video_id = ?
                   AND j.status = ?
+                  AND (? IS NULL OR j.pipeline_fingerprint = ?)
                   AND (
                     SELECT COUNT(DISTINCT sc.language)
                     FROM subtitle_cues sc
@@ -275,7 +306,7 @@ class Database:
                 ORDER BY j.created_at DESC
                 LIMIT 1
                 """,
-                (video_id, JobStatus.done.value, *languages, len(set(languages))),
+                (video_id, JobStatus.done.value, fingerprint, fingerprint, *languages, len(set(languages))),
             ).fetchone()
         return self._row_to_job(row) if row else None
 
@@ -591,6 +622,7 @@ class Database:
             sourceLanguage=row["source_language"],
             detectedLanguage=row["detected_language"],
             targetLanguages=json.loads(row["target_languages"]),
+            pipelineFingerprint=row["pipeline_fingerprint"] if "pipeline_fingerprint" in row.keys() else None,
             error=row["error"],
             createdAt=row["created_at"],
             updatedAt=row["updated_at"],

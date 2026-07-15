@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from functools import lru_cache
+import hashlib
+import json
 from pathlib import Path
 from typing import Literal
 
@@ -74,6 +76,7 @@ class SubtitleConfig(BaseModel):
 class ServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8765
+    api_token: str = ""
 
 
 class StorageConfig(BaseModel):
@@ -88,6 +91,17 @@ class AppConfig(BaseModel):
     subtitle: SubtitleConfig = Field(default_factory=SubtitleConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
+
+
+def pipeline_fingerprint(config: AppConfig) -> str:
+    payload = {
+        "asr": config.asr.model_dump(exclude={"device"}),
+        "translation": config.translation.model_dump(exclude={"cache_path"}),
+        "subtitle": config.subtitle.model_dump(),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:16]
 
 
 @lru_cache
