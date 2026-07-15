@@ -142,6 +142,12 @@ Delete a completed job and optionally its generated files with:
 Invoke-RestMethod -Method Delete "http://127.0.0.1:8765/api/jobs/JOB_ID?purge_files=true"
 ```
 
+Recover a job whose `work/` files were deleted while its database row still exists:
+
+```powershell
+Invoke-RestMethod -Method Post "http://127.0.0.1:8765/api/jobs/JOB_ID/recover"
+```
+
 The health endpoint reports database, Ollama, FFmpeg, yt-dlp, and free disk status.
 
 ## Tests

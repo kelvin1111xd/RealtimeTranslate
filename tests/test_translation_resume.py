@@ -1,4 +1,5 @@
 from realtime_translate.config import TranslationConfig
+from realtime_translate.config import AppConfig, StorageConfig
 from realtime_translate.db import Database
 from realtime_translate.schemas import (
     GlossaryEntry,
@@ -7,6 +8,7 @@ from realtime_translate.schemas import (
     TranslationSegment,
     VideoJob,
 )
+from realtime_translate.pipeline import Pipeline
 from realtime_translate.translation import (
     BatchTranslationSegment,
     TranslationBatchInput,
@@ -19,7 +21,7 @@ from realtime_translate.translation import (
     parse_batch_translation_output,
     update_translation_memory,
 )
-from realtime_translate.youtube import extract_video_id
+from realtime_translate.youtube import extract_video_id, find_existing_audio
 
 
 def make_segment(segment_id: str, index: int) -> TranscriptSegment:
@@ -212,3 +214,28 @@ def test_youtube_host_validation_rejects_lookalikes():
         pass
     else:
         raise AssertionError("lookalike YouTube host was accepted")
+
+
+def test_recovery_detects_deleted_source_artifacts(tmp_path):
+    config = AppConfig(storage=StorageConfig(data_dir=tmp_path / "data", work_dir=tmp_path / "work"))
+    pipeline = Pipeline(config, Database(tmp_path / "data" / "db.sqlite"))
+    job = VideoJob(
+        id="job-1",
+        youtubeUrl="https://www.youtube.com/watch?v=test",
+        videoId="test",
+        audioPath=str(tmp_path / "work" / "audio" / "test.16k.wav"),
+        targetLanguages=["zh-TW"],
+    )
+
+    assert pipeline.missing_source_artifacts(job) == ["audio", "transcript"]
+
+
+def test_existing_audio_prefers_normalized_file(tmp_path):
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+    raw = audio_dir / "video.webm"
+    normalized = audio_dir / "video.16k.wav"
+    raw.write_bytes(b"raw")
+    normalized.write_bytes(b"normalized")
+
+    assert find_existing_audio(audio_dir, "video") == normalized

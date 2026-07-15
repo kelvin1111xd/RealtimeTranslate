@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import shutil
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import uuid4
@@ -44,6 +45,8 @@ CURRENT_FINGERPRINT = pipeline_fingerprint(config)
 db = Database(config.storage.data_dir / "db.sqlite")
 pipeline = Pipeline(config, db)
 executor = ThreadPoolExecutor(max_workers=1)
+in_flight_jobs: set[str] = set()
+in_flight_lock = threading.Lock()
 
 app = FastAPI(title="Realtime Translate", version="0.1.0")
 app.add_middleware(
@@ -71,11 +74,39 @@ if static_dir.exists():
 
 
 def schedule_job(job_id: str, provider_override: str | None = None) -> None:
-    executor.submit(pipeline.run_job, job_id, provider_override)
+    submit_tracked(job_id, pipeline.run_job, job_id, provider_override)
 
 
 def schedule_recovery(job: VideoJob) -> None:
-    executor.submit(pipeline.resume_or_recover, job, None)
+    submit_tracked(job.id, pipeline.resume_or_recover, job, None)
+
+
+def schedule_retranslate(
+    job: VideoJob, languages: list[str], provider_override: str | None = None
+) -> None:
+    submit_tracked(job.id, pipeline.retranslate, job, languages, provider_override)
+
+
+def submit_tracked(job_id: str, function, *args) -> bool:
+    with in_flight_lock:
+        if job_id in in_flight_jobs:
+            return False
+        in_flight_jobs.add(job_id)
+
+    def run() -> None:
+        try:
+            function(*args)
+        finally:
+            with in_flight_lock:
+                in_flight_jobs.discard(job_id)
+
+    try:
+        executor.submit(run)
+    except Exception:
+        with in_flight_lock:
+            in_flight_jobs.discard(job_id)
+        raise
+    return True
 
 
 @app.on_event("startup")
@@ -158,6 +189,26 @@ def create_job(request: CreateJobRequest, background: BackgroundTasks) -> JobRes
 
     active_job = db.get_active_job_by_video(video_id)
     if active_job:
+        with in_flight_lock:
+            running = active_job.id in in_flight_jobs
+        if not running:
+            db.update_job_status(
+                active_job.id,
+                JobStatus.queued,
+                progress_stage="queued",
+                progress_message="Recovering job after interrupted worker or missing files",
+                progress_detail={"cache": "recovery", "previousStatus": active_job.status.value},
+            )
+            active_job = db.get_job(active_job.id) or active_job
+            background.add_task(schedule_recovery, active_job)
+            return JobResponse(
+                job=active_job,
+                links={
+                    **job_links(active_job),
+                    "cache": "recovery",
+                    "message": "Previous job state found; recovery was queued.",
+                },
+            )
         return JobResponse(
             job=active_job,
             links={
@@ -184,9 +235,7 @@ def create_job(request: CreateJobRequest, background: BackgroundTasks) -> JobRes
                 progress_detail={"cache": "stale", "missingTranslationFiles": missing_translation_files},
             )
             cached_job = db.get_job(cached_job.id) or cached_job
-            background.add_task(
-                lambda: executor.submit(pipeline.retranslate, cached_job, missing_translation_files, None)
-            )
+            background.add_task(schedule_retranslate, cached_job, missing_translation_files, None)
             return JobResponse(
                 job=cached_job,
                 links={
@@ -246,9 +295,7 @@ def create_job(request: CreateJobRequest, background: BackgroundTasks) -> JobRes
         )
         transcript_job = db.get_job(transcript_job.id) or transcript_job
         transcript_job.targetLanguages = merged_languages
-        background.add_task(
-            lambda: executor.submit(pipeline.retranslate, transcript_job, missing_languages, None)
-        )
+        background.add_task(schedule_retranslate, transcript_job, missing_languages, None)
         return JobResponse(
             job=transcript_job,
             links={
@@ -323,6 +370,34 @@ def get_job(job_id: str) -> JobResponse:
     return JobResponse(job=job, links=job_links(job))
 
 
+@app.post("/api/jobs/{job_id}/recover", response_model=JobResponse)
+def recover_job(job_id: str, background: BackgroundTasks) -> JobResponse:
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    with in_flight_lock:
+        running = job.id in in_flight_jobs
+    if running:
+        raise HTTPException(status_code=409, detail="A worker is already running for this job")
+    db.update_job_status(
+        job.id,
+        JobStatus.queued,
+        progress_stage="queued",
+        progress_message="Recovery queued",
+        progress_detail={"cache": "recovery", "previousStatus": job.status.value},
+    )
+    recovered = db.get_job(job.id) or job
+    background.add_task(schedule_recovery, recovered)
+    return JobResponse(
+        job=recovered,
+        links={
+            **job_links(recovered),
+            "cache": "recovery",
+            "message": "Job recovery was queued.",
+        },
+    )
+
+
 @app.delete("/api/jobs/{job_id}")
 def delete_job(job_id: str, purge_files: bool = Query(False)) -> dict:
     job = db.get_job(job_id)
@@ -348,7 +423,8 @@ def retranslate(job_id: str, request: RetranslateRequest, background: Background
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     languages = request.targetLanguages or job.targetLanguages
-    background.add_task(lambda: executor.submit(pipeline.retranslate, job, languages, request.provider))
+    if not submit_tracked(job.id, pipeline.retranslate, job, languages, request.provider):
+        raise HTTPException(status_code=409, detail="A translation worker is already running for this job")
     return JobResponse(job=job, links=job_links(job))
 
 

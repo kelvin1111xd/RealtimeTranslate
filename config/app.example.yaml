@@ -18,6 +18,7 @@ youtube:
   cookies_from_browser:
   browser_profile:
   js_runtimes: []
+  reuse_existing_audio: true
 
 translation:
   primary_provider: ollama

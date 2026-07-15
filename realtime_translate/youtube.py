@@ -75,7 +75,6 @@ class YouTubeIngestion:
         if not wav_path.exists():
             raise FileNotFoundError(f"yt-dlp did not produce expected audio file: {wav_path}")
         return wav_path
-
     def _base_options(self) -> dict:
         options: dict = {}
         if self.config.cookies_file:
@@ -99,6 +98,18 @@ class YouTubeIngestion:
                 runtimes[name] = {"path": path} if path else {}
             options["js_runtimes"] = runtimes
         return options
+
+
+def find_existing_audio(audio_dir: Path, video_id: str) -> Path | None:
+    normalized = audio_dir / f"{video_id}.16k.wav"
+    if normalized.exists():
+        return normalized
+    candidates = sorted(
+        path
+        for path in audio_dir.glob(f"{video_id}.*")
+        if path.is_file() and path.name != normalized.name
+    )
+    return candidates[0] if candidates else None
 
 
 def normalize_audio(input_path: Path, output_path: Path) -> Path:

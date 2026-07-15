@@ -490,6 +490,11 @@ class Database:
                 (job_id, language),
             )
 
+    def reset_job_outputs(self, job_id: str) -> None:
+        with self.connect() as conn:
+            conn.execute("DELETE FROM subtitle_cues WHERE job_id = ?", (job_id,))
+            conn.execute("DELETE FROM translation_segments WHERE job_id = ?", (job_id,))
+
     def translated_segment_ids(self, job_id: str, language: str) -> set[str]:
         with self.connect() as conn:
             rows = conn.execute(

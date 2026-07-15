@@ -32,6 +32,7 @@ class YouTubeConfig(BaseModel):
     cookies_from_browser: str | None = None
     browser_profile: str | None = None
     js_runtimes: list[str] = Field(default_factory=lambda: ["node"])
+    reuse_existing_audio: bool = True
 
 
 class TranslationConfig(BaseModel):

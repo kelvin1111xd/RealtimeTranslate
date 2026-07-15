@@ -12,7 +12,7 @@ from .normalization import normalize_segments
 from .schemas import JobStatus, TranscriptSegment, TranslationSegment, VideoJob, utc_now_iso
 from .subtitles import build_cues, write_subtitles
 from .translation import TranslationOrchestrator
-from .youtube import YouTubeIngestion, normalize_audio
+from .youtube import YouTubeIngestion, find_existing_audio, normalize_audio
 
 
 class Pipeline:
@@ -28,15 +28,34 @@ class Pipeline:
         if not job:
             return
         try:
-            self._progress(job.id, JobStatus.downloading, 5, "downloading", "Fetching video metadata")
-            metadata = self.ingestion.fetch_metadata(job.youtubeUrl)
-
-            self._progress(job.id, JobStatus.downloading, 10, "downloading", "Downloading audio")
-            audio = self.ingestion.download_audio(job.youtubeUrl, job.videoId)
-            normalized_audio = audio.with_name(f"{job.videoId}.16k.wav")
-
-            self._progress(job.id, JobStatus.downloading, 20, "audio", "Normalizing audio to 16 kHz mono")
-            normalize_audio(audio, normalized_audio)
+            self.db.reset_job_outputs(job.id)
+            audio_dir = self.config.storage.work_dir / "audio"
+            normalized_audio = audio_dir / f"{job.videoId}.16k.wav"
+            existing_audio = (
+                find_existing_audio(audio_dir, job.videoId)
+                if self.config.youtube.reuse_existing_audio
+                else None
+            )
+            metadata = {}
+            if not existing_audio:
+                self._progress(job.id, JobStatus.downloading, 5, "downloading", "Fetching video metadata")
+                metadata = self.ingestion.fetch_metadata(job.youtubeUrl)
+            if existing_audio and existing_audio == normalized_audio:
+                normalized_audio = existing_audio
+                self._progress(
+                    job.id, JobStatus.downloading, 20, "audio", "Reusing existing normalized audio"
+                )
+            else:
+                if existing_audio:
+                    audio = existing_audio
+                    self._progress(
+                        job.id, JobStatus.downloading, 15, "audio", "Reusing existing audio"
+                    )
+                else:
+                    self._progress(job.id, JobStatus.downloading, 10, "downloading", "Downloading audio")
+                    audio = self.ingestion.download_audio(job.youtubeUrl, job.videoId)
+                self._progress(job.id, JobStatus.downloading, 20, "audio", "Normalizing audio to 16 kHz mono")
+                normalize_audio(audio, normalized_audio)
             self.db.update_job_status(
                 job.id,
                 JobStatus.transcribing,
@@ -138,6 +157,17 @@ class Pipeline:
             )
 
     def resume_or_recover(self, job: VideoJob, provider_override: str | None = None) -> None:
+        if not self.source_artifacts_exist(job):
+            self._progress(
+                job.id,
+                JobStatus.queued,
+                max(1, job.progressPercent),
+                "queued",
+                "Source audio or transcript artifact is missing; rebuilding from YouTube",
+                {"recovery": "full_rebuild", "missingArtifacts": self.missing_source_artifacts(job)},
+            )
+            self.run_job(job.id, provider_override=provider_override)
+            return
         segments = self.db.list_transcript(job.id)
         if not segments:
             self.run_job(job.id, provider_override=provider_override)
@@ -167,6 +197,18 @@ class Pipeline:
             return
 
         self._progress(job.id, JobStatus.done, 100, "done", "Recovered completed job")
+
+    def source_artifacts_exist(self, job: VideoJob) -> bool:
+        return not self.missing_source_artifacts(job)
+
+    def missing_source_artifacts(self, job: VideoJob) -> list[str]:
+        missing: list[str] = []
+        if not job.audioPath or not Path(job.audioPath).exists():
+            missing.append("audio")
+        transcript_path = self.config.storage.work_dir / "transcripts" / f"{job.videoId}.source.json"
+        if not transcript_path.exists():
+            missing.append("transcript")
+        return missing
 
     def rebuild_translation_files(self, job: VideoJob) -> list[str]:
         rebuilt: list[str] = []
